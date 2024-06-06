@@ -1,22 +1,15 @@
-def fn_CONF_obs_IncorrectIdentifier(dataframe, field_name):
-    if dataframe['kl_country']=='BE':
-        cc='BE'
-    elif dataframe['kl_nationality']=='BE':
-        cc='BE'
-    elif dataframe['countryofactivity']=='BE':
-        cc='BE'
-    else:
-        cc= None
-    
-    if cc=='BE':
-        if field_name == 'kl_ben' and ataframe[field_name].str.len() !=9:
-            return True
-        elif field_name == 'kl_lei' and ataframe[field_name].str.len() !=9:
-            return True
-        elif field_name == 'kl_vat_number' and ataframe[field_name].str.len() !=10:
-            return True
-        else:
-            return False
-    else:
-        return False
-    
+data = {'psp':['19408416','19217569','11709945','11709945','25851825','12345'],
+        'kl_company_name':['EUROPARKING','EUROPARKING','BUYSSE MARNIX','BUYSSE MARNIX','JS HANDSURGERY','CHarles'],
+        'kl_ben':[None,'0461950721','0711418685','0711418685','0784674669',None]
+       }
+df = pd.DataFrame(data)
+
+
+
+duplicate_id_card = df['kl_ben'].duplicated(keep=False)
+
+anomalies = df[duplicate_id_card].groupby('kl_ben')['kl_company_name'].nunique() > 1
+
+is_anomalie = df['kl_ben'].isin(anomalies.index)
+
+is_anomalie & df['kl_ben'].notna()
