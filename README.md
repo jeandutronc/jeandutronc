@@ -1,15 +1,26 @@
-data = {'psp':['19408416','19217569','11709945','11709945','25851825','12345'],
-        'kl_company_name':['EUROPARKING','EUROPARKING','BUYSSE MARNIX','BUYSSE MARNIX','JS HANDSURGERY','CHarles'],
-        'kl_ben':[None,'0461950721','0711418685','0711418685','0784674669',None]
-       }
+data = {'kl_first_name':['Antoine','An','Vanderelst'],
+        'kl_last_name':['Vanderelst','Vanderelst','Vanderelst']}
+
 df = pd.DataFrame(data)
 
+def fn_ACCU_obs_InfoAlsoInOtherField_FirstLastName(row,field_name):
+    if field_name == 'kl_first_name':   
+        field1 = row['kl_first_name']
+        field2 = row['kl_last_name']
+    else:
+        field1 = row['kl_last_name']
+        field2 = row['kl_first_name']  
+       
+    if pd.isna(field1) or pd.isna(field2):
+        return False
+    
+    field1_words = re.sub(" +", " ",str(field1)).strip().upper.split(" ")
+    field2_words = re.sub(" +", " ",str(field1)).strip().upper.split(" ")
+    
+    for word1 in field1_words:
+        for word2 in field2_words:
+            if word1 in word2:
+                return True
+    return False
 
-
-duplicate_id_card = df['kl_ben'].duplicated(keep=False)
-
-anomalies = df[duplicate_id_card].groupby('kl_ben')['kl_company_name'].nunique() > 1
-
-is_anomalie = df['kl_ben'].isin(anomalies.index)
-
-is_anomalie & df['kl_ben'].notna()
+df.apply(fn_ACCU_obs_InfoAlsoInOtherField_FirstLastName,axis=1,field_name = 'kl_first_name')
