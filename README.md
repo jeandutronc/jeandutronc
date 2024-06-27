@@ -1,46 +1,18 @@
-for file_obj in file_objects:
-    for file in file_obj.files:
-        if file.endswith('.xlsx') and not file.startswith('~'):
-            excel_file_count +=1
-print(f"excel file count : {excel_file_count}")
- 
+# scan folder and find all pdf, excels and word documents
 
-def process_file(file_obj,file_name):
-    global processed_excel_file_count
-    try:
-        pythoncom.CoInitialize()
-        file_path = os.path.join(file_obj.root, file_name)
+class FileObject:
+    def __init__(self, root, dirs, files):
+        self.root = root
+        self.dirs = dirs
+        self.files = files
         
-        if len(file_path) > max_path_length:
-            return
-        else:
-            xlsx_links, ref_links_coord = extract_links_and_references_from_xlsx(file_path)
-            if ref_links_coord:
-                external_references = get_external_reference_value(file_path,ref_links_coord)
-            else:
-                external_references=[]
-            if xlsx_links or external_references:
-                xlsx_with_links_and_references.append({'file_path' : file_path,'file_name':file_name,'hyperlinks':xlsx_links,'references':external_references})
-        with counter_lock:
-            processed_excel_file_count +=1   
-            #print(processed_excel_file_count)
-            print_statusline(f'processed {processed_excel_file_count}')
-    except Exception as e:
-        print(e)
-    finally:
-        pythoncom.CoUninitialize()
+    def __str__(self):
+        return f"Root: {self.root} \nDirs: {self.dirs} \nFiles: {self.files}\n"
     
-with ThreadPoolExecutor(max_workers = max_workers) as executor:
-    futures=[]
-    for file_obj in file_objects:
-        for file_name in file_obj.files:
-            if file_name.endswith('.xlsx') and not file_name.startswith('~'):
-                futures.append(executor.submit(process_file,file_obj,file_name))
-    
-    for future in futures:
-        future.result()
+file_objects = []
+valid_extensions = ('.pdf','.xlsx','.docx')
 
-xlsx_df = pd.DataFrame(xlsx_with_links_and_references)
-
-xlsx_df['file_type'] = 'xlsx'
-xlsx_df
+for root, dirs, files in os.walk(folder_path):
+    filtered_files = [file for file in files if file.endswith(valid_extensions) and not file.startswith('~')]
+    if filtered_files:
+        file_objects.append(FileObject(root, dirs, filtered_files))
