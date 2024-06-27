@@ -7,11 +7,9 @@ def extract_links_and_references_from_xlsx(file_path):
             wb = load_workbook(file_path,data_only=False,read_only=False)
             print('file opened')
         except (openpyxl.utils.exceptions.InvalidFileException,zipfile.BadZipFile):
-            
             print('file skipped')
             pass
         external_ref_pattern = re.compile(r"\[([^\]]+)\]")
-        
         for sheet_name in wb.sheetnames:
             try:
                 sheet = wb[sheet_name]
@@ -26,7 +24,6 @@ def extract_links_and_references_from_xlsx(file_path):
                                 match_text = match.group(0)
                                 if match_text not in [item[2] for item in external_references_cells]:
                                     external_references_cells.append((sheet_name,cell.coordinate,match_text))
-                
             except Exception as e:
                 pass
     print(f'finished processing first function')
