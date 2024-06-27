@@ -1,21 +1,26 @@
-def get_external_reference_value(file_path,reference_cells):
-    external_references =[]
-    app = xw.App(visible=False)
+
+
+def extract_links_and_references_from_xlsx(file_path):
+    links=[]
+    external_references_cells=[]
     try:
-        wb = app.books.open(file_path,read_only=True,ignore_Read_only_command = True, password=None)
-        
-        for sheet_name, cell_address,match_text in reference_cells:
-            cell = wb.sheets[sheet_name].range(cell_address)
-            try :
-                if cell.formula:
-                    external_references.append(cell.formula)
+        wb = load_workbook(file_path,data_only=False,read_only=False)
+        external_ref_pattern = re.compile(r"\[([^\]]+)\]")
+        for sheet_name in wb.sheetnames:
+            try:
+                sheet = wb[sheet_name]
+                for row in sheet.iter_rows():
+                    for cell in row:
+                        if cell.hyperlink:
+                            links.append(cell.hyperlink.target)
+                        if cell.data_type=='f' and cell.value:
+                            match = external_ref_pattern.search(cell.value)
+                            if match:
+                                match_text = match.group(0)
+                                if match_text not in [item[2] for item in external_references_cells]:
+                                    external_references_cells.append((sheet_name,cell.coordinate,match_text))
             except Exception as e:
                 pass
-            except PermissionError as pe:
-                pass
-        wb.close()
     except Exception as e:
         pass
-
-    app.quit()
-    return external_references
+    return links, external_references_cells
