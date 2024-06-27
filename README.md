@@ -1,18 +1,35 @@
-# scan folder and find all pdf, excels and word documents
-
-class FileObject:
-    def __init__(self, root, dirs, files):
-        self.root = root
-        self.dirs = dirs
-        self.files = files
+def extract_links_and_references_from_xlsx(file_path):
+    links=[]
+    external_references_cells=[]
+    print('started first function')
+    try:
+        try:
+            wb = load_workbook(file_path,data_only=False,read_only=False)
+            print('file opened')
+        except (openpyxl.utils.exceptions.InvalidFileException,zipfile.BadZipFile):
+            
+            print('file skipped')
+            pass
+        external_ref_pattern = re.compile(r"\[([^\]]+)\]")
         
-    def __str__(self):
-        return f"Root: {self.root} \nDirs: {self.dirs} \nFiles: {self.files}\n"
-    
-file_objects = []
-valid_extensions = ('.pdf','.xlsx','.docx')
-
-for root, dirs, files in os.walk(folder_path):
-    filtered_files = [file for file in files if file.endswith(valid_extensions) and not file.startswith('~')]
-    if filtered_files:
-        file_objects.append(FileObject(root, dirs, filtered_files))
+        for sheet_name in wb.sheetnames:
+            try:
+                sheet = wb[sheet_name]
+                print(f'opened sheet {sheet_name}')
+                for row in sheet.iter_rows():
+                    for cell in row:
+                        if cell.hyperlink:
+                            links.append(cell.hyperlink.target)
+                        if cell.data_type=='f' and cell.value:
+                            match = external_ref_pattern.search(cell.value)
+                            if match:
+                                match_text = match.group(0)
+                                if match_text not in [item[2] for item in external_references_cells]:
+                                    external_references_cells.append((sheet_name,cell.coordinate,match_text))
+                
+            except Exception as e:
+                pass
+    print(f'finished processing first function')
+    except Exception as e:
+        pass
+    return links, external_references_cells
