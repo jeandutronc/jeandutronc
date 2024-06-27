@@ -1,26 +1,46 @@
+for file_obj in file_objects:
+    for file in file_obj.files:
+        if file.endswith('.xlsx') and not file.startswith('~'):
+            excel_file_count +=1
+print(f"excel file count : {excel_file_count}")
+ 
 
-
-def extract_links_and_references_from_xlsx(file_path):
-    links=[]
-    external_references_cells=[]
+def process_file(file_obj,file_name):
+    global processed_excel_file_count
     try:
-        wb = load_workbook(file_path,data_only=False,read_only=False)
-        external_ref_pattern = re.compile(r"\[([^\]]+)\]")
-        for sheet_name in wb.sheetnames:
-            try:
-                sheet = wb[sheet_name]
-                for row in sheet.iter_rows():
-                    for cell in row:
-                        if cell.hyperlink:
-                            links.append(cell.hyperlink.target)
-                        if cell.data_type=='f' and cell.value:
-                            match = external_ref_pattern.search(cell.value)
-                            if match:
-                                match_text = match.group(0)
-                                if match_text not in [item[2] for item in external_references_cells]:
-                                    external_references_cells.append((sheet_name,cell.coordinate,match_text))
-            except Exception as e:
-                pass
+        pythoncom.CoInitialize()
+        file_path = os.path.join(file_obj.root, file_name)
+        
+        if len(file_path) > max_path_length:
+            return
+        else:
+            xlsx_links, ref_links_coord = extract_links_and_references_from_xlsx(file_path)
+            if ref_links_coord:
+                external_references = get_external_reference_value(file_path,ref_links_coord)
+            else:
+                external_references=[]
+            if xlsx_links or external_references:
+                xlsx_with_links_and_references.append({'file_path' : file_path,'file_name':file_name,'hyperlinks':xlsx_links,'references':external_references})
+        with counter_lock:
+            processed_excel_file_count +=1   
+            #print(processed_excel_file_count)
+            print_statusline(f'processed {processed_excel_file_count}')
     except Exception as e:
-        pass
-    return links, external_references_cells
+        print(e)
+    finally:
+        pythoncom.CoUninitialize()
+    
+with ThreadPoolExecutor(max_workers = max_workers) as executor:
+    futures=[]
+    for file_obj in file_objects:
+        for file_name in file_obj.files:
+            if file_name.endswith('.xlsx') and not file_name.startswith('~'):
+                futures.append(executor.submit(process_file,file_obj,file_name))
+    
+    for future in futures:
+        future.result()
+
+xlsx_df = pd.DataFrame(xlsx_with_links_and_references)
+
+xlsx_df['file_type'] = 'xlsx'
+xlsx_df
