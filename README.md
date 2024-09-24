@@ -1,44 +1,34 @@
-import pandas as pd
+import re
 
-# Preprocessing: Group addresses by first 2 digits of the postal code
-df_address['postcode_prefix'] = df_address['postcode'].str[:2]
-address_groups = df_address.groupby('postcode_prefix')
+# Function to match abbreviations
+def match_abbreviation(token, referential_word):
+    abbreviation_match = re.match(r'^([A-Za-z])\.$', token)
+    if abbreviation_match:
+        return referential_word.startswith(abbreviation_match.group(1))
+    return False
 
-# Initialize the counter
-counter = 0
-
-# Function to match address
-def match_address_optimized(client_country_code, client_zipcode, client_expanded_address, address_groups):
-    if client_country_code != 'BE':
-        return (None, None, None, None)
+# Function to normalize and compare addresses
+def match_address(client_address, referential_address):
+    client_tokens = client_address.split()  # Tokenize the client address
+    referential_tokens = referential_address.split()  # Tokenize the referential address
     
-    postcode_prefix = client_zipcode[:2]
-    if postcode_prefix not in address_groups.groups:
-        return (None, None, None, None)
+    for client_token, referential_token in zip(client_tokens, referential_tokens):
+        # Handle abbreviations
+        if '.' in client_token:
+            if not match_abbreviation(client_token, referential_token):
+                return False  # Return False if abbreviation doesn't match
+        else:
+            # Handle full word matches
+            if client_token.lower() != referential_token.lower():
+                return False  # Return False if full words don't match
     
-    # Filter the relevant address group based on the postcode prefix
-    filtered_df = address_groups.get_group(postcode_prefix)
-    
-    # Convert expanded_address lists to sets for fast lookup
-    for _, address_row in filtered_df.iterrows():
-        if set(client_expanded_address).intersection(set(address_row['expanded_address'])):
-            return address_row[['street', 'city', 'postcode', 'origin_file']].values
-    
-    return (None, None, None, None)
+    return True  # All tokens matched
 
-# Processing function with counter
-def process_client_row_optimized(row):
-    global counter
-    counter += 1
-    if counter % 10 == 0 or counter == len(df):  # Print every 10 rows or at the last row
-        print(f"Processed {counter} rows...", end='\r')
-    return match_address_optimized(row['kl_country'], row['kl_postcode'], row['expanded_address'], address_groups)
+# Example usage
+client_address = "Pr. Elizabethln"
+referential_address = "Princes Elizabethlaan"
 
-# Apply the optimized processing function to the dataframe
-result = df.apply(process_client_row_optimized, axis=1, result_type='expand')
-
-# Add matched columns to the original dataframe
-df[['matched_street', 'matched_city', 'matched_postcode', 'matched_file']] = result
-
-# Final count message
-print(f"\nProcessed {counter} rows in total.")
+if match_address(client_address, referential_address):
+    print("Match found!")
+else:
+    print("No match.")
