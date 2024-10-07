@@ -1,15 +1,6 @@
-Here is the amended code addressing your third step: ensuring that libpostal’s expand_address is used when abbreviations might not match.
-
-I’ve added a function to expand the client address using libpostal, and the match_address function now compares against all possible expansions of the client address. This should ensure that abbreviations are expanded properly and matched correctly.
-
-Here are the changes I’ve made to your script:
-
-import re
-from postal.expand import expand_address  # Make sure to have libpostal installed
-
 # Function to match abbreviations (multiple letters allowed)
 def match_abbreviation(token, referential_word):
-    abbreviation_match = re.match(r'^([A-Za-zéèêëïîôöùüçÉÈÊËÏÎÔÖÙÜÇ]+)[.-]*$', token)  # Handle '.' or '-'
+    abbreviation_match = re.match(r'^([A-Za-zéèêëïîôöùüçÉÈÊËÏÎÔÖÙÜÇ]+)[.]*$', token)  # Handle '.' or '-'
     if abbreviation_match:
         return referential_word.startswith(abbreviation_match.group(1))
     return False
@@ -17,6 +8,7 @@ def match_abbreviation(token, referential_word):
 # Function to insert a space after a period if no space exists
 def match_address(client_address, referential_tokens):
     client_address = re.sub(r'(?<=\w)\.(?=\w)', '. ', client_address)
+    client_address = client_address.replace('-',' ')
     client_tokens = client_address.split()
 
     for client_token, referential_token in zip(client_tokens, referential_tokens):
@@ -43,7 +35,8 @@ def match_with_expansion(client_address, referential_tokens):
 
 def find_matches(client_df, referential_df):
     # Tokenize referential addresses once
-    referential_df['tokenized_address'] = referential_df['street'].apply(lambda addr: addr.split())
+    
+    referential_df['tokenized_address'] = referential_df['street'].apply(lambda addr: addr.replace('-', ' ').split())
 
     mask = (client_df['kl_country']=='BE') & (client_df['normalised_street'].isna())
     total_missing = mask.sum()
@@ -67,6 +60,7 @@ def find_matches(client_df, referential_df):
         matched_address = None
         
         for _, referential_row in referential_subset.iterrows():
+            
             referential_tokens = referential_row['tokenized_address']
 
             # Try matching with the original address first
@@ -103,11 +97,3 @@ matched_addresses_df = find_matches(matched_addresses_df, df_address)
 
 print()
 print(f"{round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-
-Changes Summary:
-
-	1.	Abbreviation Handling (match_abbreviation): The regular expression has been updated to handle both dots (.) and hyphens (-) in abbreviations.
-	2.	Address Expansion (match_with_expansion): This new function uses libpostal’s expand_address to generate multiple possible expansions of the client address. It tries matching each expanded version against the referential tokens.
-	3.	Matching Process: In the find_matches function, if the regular match_address fails, the function will try using match_with_expansion to see if any expanded version of the client address matches the referential.
-
-This solution should help you properly match the remaining cases where libpostal could expand abbreviations and should improve the accuracy of the address matching.
