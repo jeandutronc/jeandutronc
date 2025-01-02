@@ -1,209 +1,112 @@
-### pq_writer = None
+from postal.parser import parse_address
+import pandas as pd
+from difflib import SequenceMatcher
 
 
-for i in range(0,1):
-    print(f"Started loop {i+1} of {loops}")
-    table = pf.read_row_group(i, columns=columns)
-    df = table.to_pandas()
+def parse_full_address(df, street_col, city_col, postcode_col, country_col):
+    """
+    Combines address fields into a full address, parses it using the postal package, 
+    and extracts structured components.
+    """
+    df['full_address'] = (
+        df[street_col].fillna('') + ', ' +
+        df[city_col].fillna('') + ', ' +
+        df[postcode_col].fillna('') + ', ' +
+        df[country_col].fillna('')
+    )
     
+    parsed_addresses = df['full_address'].apply(parse_address)
     
-    # STEP 1
+    # Initialize columns for structured address components
+    df['parsed_street'] = None
+    df['parsed_postcode'] = None
+    df['parsed_city'] = None
+    df['parsed_country'] = None
 
-    df['kl_street_name_lower'] = df['kl_street_name'].str.lower()
-    sopres['street_lower'] = sopres['street'].str.lower()
+    for idx, parsed in enumerate(parsed_addresses):
+        for component, value in parsed:
+            if component == 'house_number':
+                continue  # Ignore house numbers
+            elif component == 'road':
+                df.at[idx, 'parsed_street'] = value
+            elif component == 'postcode':
+                df.at[idx, 'parsed_postcode'] = value
+            elif component == 'city':
+                df.at[idx, 'parsed_city'] = value
+            elif component == 'country':
+                df.at[idx, 'parsed_country'] = value
 
-    matched_addresses_df = pd.merge(df,sopres,left_on =['kl_postcode','kl_street_name_lower'],right_on =['postcode','street_lower'], how='left').sort_values(by=['psp','street_lower'],ascending=[True,True],na_position='last').drop_duplicates(subset='psp',keep='first')
-
-    matched_addresses_df['match_step'] = None
-    matched_addresses_df['match_step'] = matched_addresses_df.apply(lambda row: 'function 1' if pd.notnull(row['postcode']) else row['match_step'], axis=1)
-    
-    matched_addresses_df = matched_addresses_df.rename(columns={'street':'normalised_street'
-                                 ,'postcode':'normalised_postcode'
-                                 ,'street_id':'reference_street_id'})
-    
-    print(f"Step 1 : Sopres - regular match - {round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-    
-    matched_addresses_df = matched_addresses_df.drop(columns=[
-    'kl_street_name_lower',
-    'street_lower',
-    'address',
-    'expanded_address'])
-    
-    
-    
-    # STEP 2
-    
-    matched_addresses_df['matched'] = ~matched_addresses_df['normalised_street'].isna()
-    
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_street_name'].fillna('')+' '+matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_postcode'].fillna('')
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'expanded_kl_address'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address'].fillna(' ').apply(expand_address)
-    
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_street_modified'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_street_name'].astype(str).apply(modify_street)
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address_modified'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_street_modified'].fillna('')+' '+matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_postcode'].fillna('')
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'expanded_kl_address_modified'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address_modified'].fillna(' ').apply(expand_address)
-        
-    matched_addresses_df = matched_addresses_df.explode('expanded_kl_address')
-    
-    matched_addresses_df = pd.merge(matched_addresses_df,sopres_exploded,left_on ='expanded_kl_address',right_on ='expanded_address', how='left').sort_values(by=['psp','street'],ascending=[True,True],na_position='last').drop_duplicates(subset='psp',keep='first')
-    
-    matched_addresses_df['normalised_street']   = matched_addresses_df['normalised_street'].fillna(matched_addresses_df['street']) 
-    matched_addresses_df['normalised_postcode'] = matched_addresses_df['normalised_postcode'].fillna(matched_addresses_df['postcode'])
-    matched_addresses_df['reference_street_id'] = matched_addresses_df['reference_street_id'].fillna(matched_addresses_df['street_id'])
-    
-    
-    print(f"Step 2 : Sopres - match with NPL - {round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-    
-    matched_addresses_df = matched_addresses_df.drop(columns=[
-    'street',
-    'postcode',
-    'street_id',
-    'address',
-    'expanded_address'])
-
-    
-    
-    # STEP 3
-    
-    matched_addresses_df['matched'] = ~matched_addresses_df['reference_street_id'].isna()
-    
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'expanded_kl_address_modified'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address_modified'].fillna(' ').apply(expand_address)
-    matched_addresses_df = matched_addresses_df.explode('expanded_kl_address_modified')
-    
-    matched_addresses_df = pd.merge(matched_addresses_df,sopres_exploded,left_on ='expanded_kl_address_modified',right_on ='expanded_address', how='left').sort_values(by=['psp','street'],ascending=[True,True],na_position='last').drop_duplicates(subset='psp',keep='first')
-    
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'normalised_street']   = matched_addresses_df.loc[~matched_addresses_df['matched'], 'normalised_street'].fillna(matched_addresses_df.loc[~matched_addresses_df['matched'], 'street']) 
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'normalised_postcode'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'normalised_postcode'].fillna(matched_addresses_df.loc[~matched_addresses_df['matched'], 'postcode'])
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'reference_street_id'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'reference_street_id'].fillna(matched_addresses_df.loc[~matched_addresses_df['matched'], 'street_id'])
-    
-    print(f"Step 3 : Sopres - match with NPL on modified streets - {round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-    
-    matched_addresses_df = matched_addresses_df.drop(columns=[
-    'street',
-    'postcode',
-    'address',
-    'expanded_address',
-    'street_id'])
-    
-    matched_addresses_df['match_step'] = matched_addresses_df.apply(lambda row: 'function 3' if pd.notnull(row['reference_street_id']) and pd.isnull(row['match_step']) else row['match_step'], axis=1)
-
-    
-    
-    # Step 4
-    
-    matched_addresses_df = find_matches(matched_addresses_df, 'kl_street_name', sopres, 4)
-
-    print(f"Step 4 : Sopres - match with abbreviations - {round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-    
-    matched_addresses_df['match_step'] = matched_addresses_df.apply(lambda row: 'function 4' if pd.notnull(row['reference_street_id']) and pd.isnull(row['match_step']) else row['match_step'], axis=1)
-
-    
-    
-    # Step 5
-    
-    matched_addresses_df = find_matches(matched_addresses_df, 'kl_street_modified', sopres, 5)
-    print(f"Step 5 : Sopres - match with abbreviations on modified streets - {round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-    matched_addresses_df['match_step'] = matched_addresses_df.apply(lambda row: 'function 5' if pd.notnull(row['reference_street_id']) and pd.isnull(row['match_step']) else row['match_step'], axis=1)
-    
-    # Add flag if address change is recommended
-    matched_addresses_df['modification_suggested'] = (matched_addresses_df['kl_street_name'].str.replace('é','e').str.replace('è','e').str.replace('ê','e').str.replace('î','i').str.replace('ï','i').str.replace('ç','c').str.replace('ô','o').str.replace('û','u').str.upper() != matched_addresses_df['normalised_street'].str.replace('é','e').str.replace('è','e').str.replace('ê','e').str.replace('î','i').str.replace('ï','i').str.replace('ç','c').str.replace('ô','o').str.replace('û','u').str.upper())  &( ~matched_addresses_df['normalised_street'].isna())
-
-    
-    
-    
-    
-    
-    # STEP 6
-    
-    matched_addresses_df['matched'] = ~matched_addresses_df['normalised_street'].isna()
-    
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_street_name'].fillna('')+' '+matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_postcode'].fillna('')
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'expanded_kl_address'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address'].fillna(' ').apply(expand_address)
-    
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_street_modified'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_street_name'].astype(str).apply(modify_street)
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address_modified'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_street_modified'].fillna('')+' '+matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_postcode'].fillna('')
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'expanded_kl_address_modified'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address_modified'].fillna(' ').apply(expand_address)
-        
-    matched_addresses_df = matched_addresses_df.explode('expanded_kl_address')
-    
-    matched_addresses_df = pd.merge(matched_addresses_df,df_address_ref_exploded,left_on ='expanded_kl_address',right_on ='expanded_address', how='left').sort_values(by=['psp','street'],ascending=[True,True],na_position='last').drop_duplicates(subset='psp',keep='first')
-    
-    matched_addresses_df['normalised_street']   = matched_addresses_df['normalised_street'].fillna(matched_addresses_df['street']) 
-    matched_addresses_df['normalised_postcode'] = matched_addresses_df['normalised_postcode'].fillna(matched_addresses_df['postcode'])
-    matched_addresses_df['reference_street_id'] = matched_addresses_df['reference_street_id'].fillna(matched_addresses_df['street_id'])
-    
-    matched_addresses_df['match_step'] = matched_addresses_df.apply(lambda row: 'function 6' if pd.notnull(row['reference_street_id']) and pd.isnull(row['match_step']) else row['match_step'], axis=1)
-        
-    
-    
-    print(f"Step 6 : OA - match with NPL - {round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-    
-    matched_addresses_df = matched_addresses_df.drop(columns=[
-    'street',
-    'postcode',
-    'street_id',
-    'address',
-    'expanded_address'])
-
-    
-    
-    # STEP 7
-    
-    matched_addresses_df['matched'] = ~matched_addresses_df['reference_street_id'].isna()
-    
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'expanded_kl_address_modified'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'kl_address_modified'].fillna(' ').apply(expand_address)
-    matched_addresses_df = matched_addresses_df.explode('expanded_kl_address_modified')
-    
-    matched_addresses_df = pd.merge(matched_addresses_df, df_address_ref_exploded, left_on ='expanded_kl_address_modified', right_on ='expanded_address', how='left').sort_values(by=['psp','street'],ascending=[True,True],na_position='last').drop_duplicates(subset='psp',keep='first')
-    
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'normalised_street']   = matched_addresses_df.loc[~matched_addresses_df['matched'], 'normalised_street'].fillna(matched_addresses_df.loc[~matched_addresses_df['matched'], 'street']) 
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'normalised_postcode'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'normalised_postcode'].fillna(matched_addresses_df.loc[~matched_addresses_df['matched'], 'postcode'])
-    matched_addresses_df.loc[~matched_addresses_df['matched'], 'reference_street_id'] = matched_addresses_df.loc[~matched_addresses_df['matched'], 'reference_street_id'].fillna(matched_addresses_df.loc[~matched_addresses_df['matched'], 'street_id'])
-    
-    print(f"Step 7 : OA - match with NPL on modified streets - {round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-    
-    matched_addresses_df = matched_addresses_df.drop(columns=[
-    'street',
-    'postcode',
-    'address',
-    'expanded_address',
-    'street_id'])
-    
-    matched_addresses_df['match_step'] = matched_addresses_df.apply(lambda row: 'function 7' if pd.notnull(row['reference_street_id']) and pd.isnull(row['match_step']) else row['match_step'], axis=1)
-   
+    return df
 
 
-   # Step 8
-   
-    matched_addresses_df = find_matches(matched_addresses_df, 'kl_street_name', df_address_ref, 8)
-    print(f"Step 8 : OA - match with abbreviations - {round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-   
-    matched_addresses_df['match_step'] = matched_addresses_df.apply(lambda row: 'function 8' if pd.notnull(row['reference_street_id']) and pd.isnull(row['match_step']) else row['match_step'], axis=1)
- 
+def similar(a, b):
+    """Calculate similarity ratio between two strings."""
+    return SequenceMatcher(None, a, b).ratio()
 
-   
-    # Step 9
-    
-    matched_addresses_df = find_matches(matched_addresses_df, 'kl_street_modified', df_address_ref, 9)
-    print(f"Step 9 : OA - match with abbreviations on modified streets - {round(len(matched_addresses_df[(matched_addresses_df['kl_country']!='BE') | (~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
-    matched_addresses_df['match_step'] = matched_addresses_df.apply(lambda row: 'function 9' if pd.notnull(row['reference_street_id']) and pd.isnull(row['match_step']) else row['match_step'], axis=1)
-    
-    # Add flag if address change is recommended
-    matched_addresses_df['modification_suggested'] = (matched_addresses_df['kl_street_name'].str.replace('é','e').str.replace('è','e').str.replace('ê','e').str.replace('î','i').str.replace('ï','i').str.replace('ç','c').str.replace('ô','o').str.replace('û','u').str.upper() != matched_addresses_df['normalised_street'].str.replace('é','e').str.replace('è','e').str.replace('ê','e').str.replace('î','i').str.replace('ï','i').str.replace('ç','c').str.replace('ô','o').str.replace('û','u').str.upper())  &( ~matched_addresses_df['normalised_street'].isna())
-#
- #   
- #   
- #   
- #   
- #   print(f"total match including foreigners {round(len(matched_addresses_df[(~matched_addresses_df['normalised_street'].isna()) ])/len(matched_addresses_df) * 100, 2)}% match")
 
-#    
-#    # create writer to save file
-#    table_to_save  = pa.Table.from_pandas(matched_addresses_df)
-#   # if pq_writer == None:
-#   #     pq_writer= pq.ParquetWriter('/domino/datasets/local/address-check/kl_matched_addresses.parquet', table_to_save.schema,use_dictionary=True,compression='snappy')
-#   ##     
-#   # # Write the table to the Parquet file in append mode
-#   # pq_writer.write_table(table_to_save)
-#   # print('\n')
-##pq_writer.close()
-#
+def match_addresses(accounts_df, contacts_df):
+    """
+    Match addresses between the accounts and contacts dataframes
+    based on similarity of structured address components.
+    """
+    matches = []
+
+    for acc_idx, acc_row in accounts_df.iterrows():
+        for con_idx, con_row in contacts_df.iterrows():
+            # Compare parsed components for similarity
+            street_sim = similar(acc_row['parsed_street'], con_row['parsed_street'])
+            city_sim = similar(acc_row['parsed_city'], con_row['parsed_city'])
+            postcode_sim = acc_row['parsed_postcode'] == con_row['parsed_postcode']
+            country_sim = acc_row['parsed_country'] == con_row['parsed_country']
+
+            # Set thresholds for matches
+            if street_sim > 0.8 and city_sim > 0.8 and postcode_sim and country_sim:
+                matches.append({
+                    'Account Index': acc_idx,
+                    'Contact Index': con_idx,
+                    'Account Address': acc_row['full_address'],
+                    'Contact Address': con_row['full_address'],
+                    'Street Similarity': street_sim,
+                    'City Similarity': city_sim
+                })
+
+    return pd.DataFrame(matches)
+
+
+# Input DataFrames
+accounts_main_dataframe = pd.DataFrame({
+    'BillingStreet': ['123 Main St', '456 Elm St'],
+    'BillingCity': ['Brussels', 'Antwerp'],
+    'BillingPostalCode': ['1000', '2000'],
+    'BillingCountryCode': ['BE', 'BE'],
+    'ShippingStreet': ['789 Oak St', '101 Pine St'],
+    'ShippingCity': ['Ghent', 'Leuven'],
+    'ShippingPostalCode': ['9000', '3000'],
+    'ShippingCountryCode': ['BE', 'BE']
+})
+
+contacts_main_dataframe = pd.DataFrame({
+    'OtherStreet': ['234 Maple St', '678 Cedar St'],
+    'OtherCity': ['Liege', 'Namur'],
+    'OtherPostalCode': ['4000', '5000'],
+    'OtherCountryCode': ['BE', 'BE'],
+    'MailingStreet': ['345 Birch St', '890 Spruce St'],
+    'MailingCity': ['Mons', 'Charleroi'],
+    'MailingPostalCode': ['7000', '6000'],
+    'MailingCountryCode': ['BE', 'BE']
+})
+
+# Parse addresses in accounts dataframe
+accounts_main_dataframe = parse_full_address(accounts_main_dataframe, 'BillingStreet', 'BillingCity', 'BillingPostalCode', 'BillingCountryCode')
+accounts_main_dataframe = parse_full_address(accounts_main_dataframe, 'ShippingStreet', 'ShippingCity', 'ShippingPostalCode', 'ShippingCountryCode')
+
+# Parse addresses in contacts dataframe
+contacts_main_dataframe = parse_full_address(contacts_main_dataframe, 'OtherStreet', 'OtherCity', 'OtherPostalCode', 'OtherCountryCode')
+contacts_main_dataframe = parse_full_address(contacts_main_dataframe, 'MailingStreet', 'MailingCity', 'MailingPostalCode', 'MailingCountryCode')
+
+# Match addresses
+matches_df = match_addresses(accounts_main_dataframe, contacts_main_dataframe)
+
+# Output results
+print("Matched Addresses:")
+print(matches_df)
