@@ -1,31 +1,36 @@
-def parse_full_address(df, street_col, city_col, postcode_col, country_col):
-    df['full_address'] = (
-        df[street_col].fillna('') + ', ' +
-        df[city_col].fillna('') + ', ' +
-        df[postcode_col].fillna('') + ', ' +
-        df[country_col].fillna('')
-    )
-    
-    parsed_addresses = df['full_address'].apply(parse_address)
-    
-    # Initialize columns for structured address components
-    df['parsed_street'] = None
-    df['parsed_postcode'] = None
-    df['parsed_city'] = None
-    df['parsed_country'] = None
+def parse_full_address(df, address_types, street_cols, city_cols, postcode_cols, country_cols):
+    # Iterate over the address types
+    for address_type, street_col, city_col, postcode_col, country_col in zip(address_types, street_cols, city_cols, postcode_cols, country_cols):
+        # Create full address by concatenating street, city, postcode, and country
+        df[f'full_address_{address_type}'] = (
+            df[street_col].fillna('') + ', ' +
+            df[city_col].fillna('') + ', ' +
+            df[postcode_col].fillna('') + ', ' +
+            df[country_col].fillna('')
+        )
+        
+        # Apply address parsing function
+        parsed_addresses = df[f'full_address_{address_type}'].apply(parse_address)
+        
+        # Initialize new columns for structured address components
+        df[f'parsed_street_{address_type}'] = None
+        df[f'parsed_postcode_{address_type}'] = None
+        df[f'parsed_city_{address_type}'] = None
+        df[f'parsed_country_{address_type}'] = None
 
-    for idx, parsed in enumerate(parsed_addresses):
-        for value, component  in parsed:
-            if component == 'house_number':
-                continue  # Ignore house numbers
-            elif component == 'road':
-                df.at[idx, 'parsed_street'] = value
-            elif component == 'postcode':
-                df.at[idx, 'parsed_postcode'] = value
-            elif component == 'city':
-                df.at[idx, 'parsed_city'] = value
-            elif component == 'country':
-                df.at[idx, 'parsed_country'] = value
+        # Process parsed addresses and assign components to respective columns
+        for idx, parsed in enumerate(parsed_addresses):
+            for value, component in parsed:
+                if component == 'house_number':
+                    continue  # Ignore house numbers
+                elif component == 'road':
+                    df.at[idx, f'parsed_street_{address_type}'] = value
+                elif component == 'postcode':
+                    df.at[idx, f'parsed_postcode_{address_type}'] = value
+                elif component == 'city':
+                    df.at[idx, f'parsed_city_{address_type}'] = value
+                elif component == 'country':
+                    df.at[idx, f'parsed_country_{address_type}'] = value
 
     return df
 
@@ -53,10 +58,29 @@ contacts_main_dataframe = pd.DataFrame({
     'MailingCountryCode': ['BE', 'BE']
 })
 
+# Address types
+address_types_accounts = ['Billing', 'Shipping']
+address_types_contacts = ['Other', 'Mailing']
+
+# Columns for each address type in the accounts and contacts DataFrames
+accounts_street_cols = ['BillingStreet', 'ShippingStreet']
+accounts_city_cols = ['BillingCity', 'ShippingCity']
+accounts_postcode_cols = ['BillingPostalCode', 'ShippingPostalCode']
+accounts_country_cols = ['BillingCountryCode', 'ShippingCountryCode']
+
+contacts_street_cols = ['OtherStreet', 'MailingStreet']
+contacts_city_cols = ['OtherCity', 'MailingCity']
+contacts_postcode_cols = ['OtherPostalCode', 'MailingPostalCode']
+contacts_country_cols = ['OtherCountryCode', 'MailingCountryCode']
+
 # Parse addresses in accounts dataframe
-accounts_main_dataframe = parse_full_address(accounts_main_dataframe, 'BillingStreet', 'BillingCity', 'BillingPostalCode', 'BillingCountryCode')
-accounts_main_dataframe = parse_full_address(accounts_main_dataframe, 'ShippingStreet', 'ShippingCity', 'ShippingPostalCode', 'ShippingCountryCode')
+accounts_main_dataframe = parse_full_address(
+    accounts_main_dataframe, address_types_accounts, accounts_street_cols, 
+    accounts_city_cols, accounts_postcode_cols, accounts_country_cols
+)
 
 # Parse addresses in contacts dataframe
-contacts_main_dataframe = parse_full_address(contacts_main_dataframe, 'OtherStreet', 'OtherCity', 'OtherPostalCode', 'OtherCountryCode')
-contacts_main_dataframe = parse_full_address(contacts_main_dataframe, 'MailingStreet', 'MailingCity', 'MailingPostalCode', 'MailingCountryCode')
+contacts_main_dataframe = parse_full_address(
+    contacts_main_dataframe, address_types_contacts, contacts_street_cols, 
+    contacts_city_cols, contacts_postcode_cols, contacts_country_cols
+)
